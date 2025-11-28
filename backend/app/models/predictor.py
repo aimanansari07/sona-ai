@@ -34,11 +34,14 @@ class PricePredictor:
                     self.train_model(metal, day)
     
     def train_model(self, metal, forecast_day):
-        """Train XGBoost model for specific forecast day"""
-        logger.info(f"Training {metal} model for day {forecast_day}")
+        """
+        Train XGBoost model on PURE 24K prices only
+        Purity will be applied AFTER prediction
+        """
+        logger.info(f"Training {metal} model for day {forecast_day} (24K base)")
         
-        # Fetch historical data
-        df = self.fetcher.get_historical_data(metal, days=365)
+        # Fetch historical 24K data (no purity adjustment)
+        df = self.fetcher.get_historical_data(metal, days=365, for_training=True)
         
         if df is None or len(df) < 100:
             raise ValueError(f"Insufficient data for {metal}")
@@ -78,7 +81,7 @@ class PricePredictor:
         self.models[f"{metal}_day{forecast_day}"] = model
         self.scalers[f"{metal}_day{forecast_day}"] = scaler
         
-        logger.info(f"✅ Model trained: {metal}_day{forecast_day}")
+        logger.info(f"✅ Model trained: {metal}_day{forecast_day} (24K base)")
     
     def create_features(self, df):
         """Create technical indicators and features"""
@@ -112,14 +115,29 @@ class PricePredictor:
         
         return df.dropna()
     
-    def predict(self, metal):
-        """Generate predictions for next 7 days"""
-        # Fetch latest data
-        df = self.fetcher.get_historical_data(metal, days=90)
+    def predict(self, metal, purity='24K'):
+        """
+        Generate predictions for next 7 days
+        1. Predict 24K prices
+        2. Apply purity factor after prediction
+        """
+        logger.info(f"Generating predictions for {metal} (will apply {purity} after)")
+        
+        # Fetch latest 24K data
+        df = self.fetcher.get_historical_data(metal, days=90, for_training=True)
+        
+        if df is None or df.empty:
+            raise ValueError(f"Could not fetch data for {metal}")
+        
         df = self.create_features(df)
         
-        # Get current price
-        current_price = float(df['Close'].iloc[-1])
+        # Get current 24K price
+        current_price_24k = float(df['Close'].iloc[-1])
+        
+        # Apply purity to current price
+        current_price = self.fetcher.apply_purity(current_price_24k, metal, purity)
+        
+        logger.info(f"Current {metal} price - 24K: ₹{current_price_24k:.2f}, {purity}: ₹{current_price:.2f} per gram")
         
         # Prepare features for prediction
         feature_cols = [col for col in df.columns if col not in ['target_1', 'target_2', 'target_3', 'Date']]
@@ -127,14 +145,22 @@ class PricePredictor:
         
         forecast = []
         
-        # Predict days 1-3 with dedicated models
+        # Predict days 1-3 with dedicated models (on 24K prices)
         for day in range(1, 4):
             model_key = f"{metal}_day{day}"
+            
+            if model_key not in self.scalers or model_key not in self.models:
+                logger.warning(f"Model not found for {model_key}, training now...")
+                self.train_model(metal, day)
+            
             scaler = self.scalers[model_key]
             model = self.models[model_key]
             
             X_scaled = scaler.transform(latest_features)
-            predicted_price = float(model.predict(X_scaled)[0])
+            predicted_price_24k = float(model.predict(X_scaled)[0])
+            
+            # Apply purity to predicted price
+            predicted_price = self.fetcher.apply_purity(predicted_price_24k, metal, purity)
             
             trend = ((predicted_price - current_price) / current_price) * 100
             confidence = 95 - (day * 5)  # Decreasing confidence
@@ -162,6 +188,8 @@ class PricePredictor:
                 'confidence': confidence
             })
         
+        logger.info(f"Generated {len(forecast)} day forecast for {metal} ({purity})")
+        
         return {
             'current_price': round(current_price, 2),
             'forecast': forecast,
@@ -169,8 +197,14 @@ class PricePredictor:
         }
     
     def retrain_models(self):
-        """Retrain all models with latest data"""
+        """Retrain all models with latest data (24K only)"""
+        logger.info("Starting model retraining (24K base prices)...")
+        
         for metal in ['gold', 'silver']:
             for day in [1, 2, 3]:
-                self.train_model(metal, day)
+                try:
+                    self.train_model(metal, day)
+                except Exception as e:
+                    logger.error(f"Error training {metal} day {day}: {str(e)}")
+        
         logger.info("✅ All models retrained")

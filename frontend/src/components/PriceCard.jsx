@@ -2,7 +2,15 @@ import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
-export default function PriceCard({ title, price, subtitle, trend, confidence, delay = 0 }) {
+export default function PriceCard({ 
+  title, 
+  price, 
+  subtitle, 
+  trend, 
+  confidence, 
+  pricePerGram, 
+  delay = 0 
+}) {
   const [displayPrice, setDisplayPrice] = useState(0)
 
   useEffect(() => {
@@ -59,7 +67,18 @@ export default function PriceCard({ title, price, subtitle, trend, confidence, d
         >
           ₹{displayPrice.toLocaleString('en-IN')}
         </motion.div>
-        <p className="text-sm text-gray-500 mt-1">per 10 grams</p>
+        
+        {/* Per Gram Price */}
+        {pricePerGram && (
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: delay + 0.3 }}
+            className="text-sm text-gray-500 mt-1"
+          >
+            ₹{pricePerGram.toLocaleString('en-IN')} per gram
+          </motion.p>
+        )}
       </div>
 
       <div className="border-t border-gray-100 pt-3">

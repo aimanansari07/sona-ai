@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Header from './components/Header'
 import LocationSelector from './components/LocationSelector'
+import PurityUnitSelector from './components/PurityUnitSelector'
 import PriceCard from './components/PriceCard'
 import ForecastChart from './components/ForecastChart'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -9,20 +10,20 @@ import { fetchPredictions } from './utils/api'
 import useStore from './store/useStore'
 
 function App() {
-  const { metal, location, setMetal, setLocation } = useStore()
+  const { metal, location, purity, unit, setMetal, setLocation, setPurity, setUnit } = useStore()
   const [predictions, setPredictions] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     loadPredictions()
-  }, [metal, location])
+  }, [metal, location, purity, unit])
 
   const loadPredictions = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchPredictions(metal, location.state, location.city)
+      const data = await fetchPredictions(metal, location.state, location.city, purity, unit)
       setPredictions(data)
     } catch (err) {
       setError('Failed to load predictions. Please try again.')
@@ -44,9 +45,9 @@ function App() {
           transition={{ duration: 0.4 }}
           className="mb-8"
         >
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="flex flex-col gap-4">
             {/* Metal Toggle */}
-            <div className="flex gap-2 bg-white rounded-lg p-2 shadow-md">
+            <div className="flex gap-2 bg-white rounded-lg p-2 shadow-md w-fit">
               <button
                 onClick={() => setMetal('gold')}
                 className={`px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
@@ -69,8 +70,10 @@ function App() {
               </button>
             </div>
 
-            {/* Location Selector */}
-            <LocationSelector />
+            <div className="flex flex-col md:flex-row gap-4">
+              <LocationSelector />
+              <PurityUnitSelector />
+            </div>
           </div>
         </motion.div>
 
@@ -105,16 +108,18 @@ function App() {
               className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
             >
               <PriceCard
-                title="Today's Price"
+                title={`Today's Price (${predictions.purity})`}
                 price={predictions.currentPrice}
-                subtitle={`${location.city}, ${location.state}`}
+                subtitle={`${predictions.unit_label} • ${location.city}, ${location.state}`}
+                pricePerGram={predictions.currentPricePerGram}
                 trend={0}
                 delay={0.1}
               />
               <PriceCard
                 title="Tomorrow's Forecast"
                 price={predictions.forecast[0].price}
-                subtitle={`High Confidence Zone`}
+                subtitle={`${predictions.unit_label} • High Confidence Zone`}
+                pricePerGram={predictions.forecast[0].price_per_gram}
                 trend={predictions.forecast[0].trend}
                 confidence={predictions.forecast[0].confidence}
                 delay={0.2}
@@ -122,7 +127,7 @@ function App() {
               <PriceCard
                 title="7-Day Average"
                 price={predictions.weekAverage}
-                subtitle="Trend Zone Estimate"
+                subtitle={`${predictions.unit_label} • Trend Zone Estimate`}
                 trend={predictions.weekTrend}
                 delay={0.3}
               />
@@ -146,6 +151,7 @@ function App() {
             >
               <p className="text-sm text-yellow-800 text-center">
                 ⚠️ Predictions are AI-generated estimates for informational purposes only. 
+                Prices include approximate retail markup and city-specific adjustments. 
                 Actual prices may vary. Always verify with local jewelers before purchasing.
               </p>
             </motion.div>
